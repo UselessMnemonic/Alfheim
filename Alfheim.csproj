@@ -10,7 +10,6 @@
     <OutputType>Library</OutputType>
     <Optimize>true</Optimize>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
-    <PublicizedAssemblies>$(VALHEIM_HOME)\valheim_Data\Managed\publicized_assemblies</PublicizedAssemblies>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,7 +17,7 @@
     <PackageReference Include="BepInEx.Core" Version="5.*" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="1.*" />
     <Reference Include="assembly_valheim, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(PublicizedAssemblies)\assembly_valheim_publicized.dll</HintPath>
+      <HintPath>$(VALHEIM_DATA)\Managed\publicized_assemblies\assembly_valheim_publicized.dll</HintPath>
     </Reference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     <PackageReference Include="UnityEngine.Modules" Version="5.6.0" IncludeAssets="compile" />
