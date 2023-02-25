@@ -1,5 +1,5 @@
 ﻿# Alfheim
-A simple JSON RPC library for developers of Valheim mods.
+A simple (WIP) JSON RPC library for developers of Valheim mods.
 
 ## Building
 ### Environment
