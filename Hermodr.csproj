@@ -15,30 +15,33 @@
 
   <!-- NuGet packages -->
   <ItemGroup>
-    <PackageReference Include="System.Text.Json" Version="7.0.2" />
     <PackageReference Include="BepInEx.PluginInfoProps" Version="1.*" />
   </ItemGroup>
 
   <!-- Runtime packages -->
   <ItemGroup>
     <Reference Include="UnityEngine">
-      <HintPath>$(VALHEIM_DATA)\..\unstripped_corlib\UnityEngine.dll</HintPath>
+      <HintPath>$(BEPINEX_UNSTRIPPED)\UnityEngine.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(VALHEIM_DATA)\..\unstripped_corlib\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>$(BEPINEX_UNSTRIPPED)\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony, Version=2.9.0.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(VALHEIM_DATA)\..\BepInEx\core\0Harmony.dll</HintPath>
+      <HintPath>$(BEPINEX_CORE)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="BepInEx, Version=5.4.19.0, Culture=neutral, PublicKeyToken=null">
-      <HintPath>$(VALHEIM_DATA)\..\BepInEx\core\BepInEx.dll</HintPath>
+      <HintPath>$(BEPINEX_CORE)\BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="assembly_valheim_publicized">
-      <HintPath>$(VALHEIM_DATA)\Managed\publicized_assemblies\assembly_valheim_publicized.dll</HintPath>
+    <Reference Include="assembly_valheim">
+      <HintPath>$(VALHEIM_PUBLICIZED)\assembly_valheim_publicized.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="assembly_utils">
+      <HintPath>$(VALHEIM_PUBLICIZED)\assembly_utils_publicized.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

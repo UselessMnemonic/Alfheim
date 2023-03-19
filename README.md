@@ -3,13 +3,11 @@ My personal Valheim IPC server library for non-game clients.
 
 ## Building
 ### Environment
-It is expected your environment define a variable called `VALHEIM_DATA` set to the path where Valheim's data files are located.
+It is expected your environment defines these variables:
 
-On Windows machines, it's typically in `C:\Program Files (x86)\Steam\steamapps\common\Valheim\valheim_Data`.
-
-If you want to specifically target the server, it's at `C:\Program Files (x86)\Steam\steamapps\common\Valheim dedicated server\valheim_server_Data`.
-
-Linux users, consult your Steam installation or server manager.
+ - `BEPINEX_UNSTRIPPED` set to the location of the unstripped libraries
+ - `BEPINEX_CORE` set to the location of the core BepInEx libraries
+ - `VALHEIM_PUBLICIZED` set to the location of your publicized game libraries
 
 ### BepInEx
 BepInEx is required to be installed on your Valheim instance. You may source a version particularly suited for Valheim (with installation instructions) [here](https://valheim.thunderstore.io/package/denikson/BepInExPack_Valheim/).

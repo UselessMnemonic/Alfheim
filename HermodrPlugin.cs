@@ -3,12 +3,14 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
-
-using Hermodr.Messages;
-using Hermodr.Parsers;
+using Hermodr.Extensions;
+using Hermodr.Gateway;
+using Hermodr.Gateway.Packets;
 
 namespace Hermodr;
 
@@ -16,66 +18,56 @@ namespace Hermodr;
 public class HermodrPlugin : BaseUnityPlugin
 {
     private Harmony _harmony;
-    private TcpListener _serverSocket;
-    private MessageParser _parser;
+    private GatewayServer _server;
+    private CancellationTokenSource _cancelSource;
 
     /// <summary>
     /// Called when this plugin should load.
     /// </summary>
     private void Awake()
     {
+        _cancelSource = new CancellationTokenSource();
         var configDirectory = Path.Combine(Paths.ConfigPath, PluginInfo.PLUGIN_GUID);
         var configFile = Path.Combine(configDirectory, "default.cfg");
 
         var config = new ConfigFile(configFile, true);
         var portConfig = config.Bind("Default", "port", 2458, "Messaging port");
         var hostConfig = config.Bind("Default", "hostname", "localhost", "Hostname on which to bind");
-        var protocolConfig = config.Bind("Default", "protocol", MessageParser.Type.Json, "Message format protocol, either 'zpacket' or 'json'");
-
-        switch (protocolConfig.Value)
-        {
-            case MessageParser.Type.Json:
-                _parser = JsonMessageParser.Instance;
-                break;
-            default:
-                Logger.LogError($"Unknown protocol {protocolConfig.Value}");
-                return;
-        }
 
         _harmony = Harmony.CreateAndPatchAll(typeof(HermodrPlugin).Assembly, PluginInfo.PLUGIN_GUID);
-        StartServerAsync(hostConfig.Value, portConfig.Value, protocolConfig.Value);
+        ServerMainAsync(hostConfig.Value, portConfig.Value);
     }
 
     /// <summary>
-    ///     Called when this plugin should unload.
+    /// Called when this plugin should unload.
     /// </summary>
     private void OnDestroy()
     {
-        _harmony?.UnpatchSelf();
         try
         {
-            _serverSocket?.Stop();
+            _server?.Stop();
         }
         catch (SocketException e)
         {
-            Logger.LogError($"Issue closing RPC port: {e.Message}");
+            Logger.LogError($"Gateway server error while closing: {e.Message}");
         }
-
+        _harmony?.UnpatchSelf();
         Logger.LogInfo("The Hermodr is closed!");
     }
 
     /// <summary>
     /// Main server listening loop
     /// </summary>
-    private async void StartServerAsync(string hostname, int port, string protocol)
+    private async void ServerMainAsync(string hostname, int port)
     {
         try
         {
             var hostAddresses = await Dns.GetHostAddressesAsync(hostname);
+            if (_cancelSource.IsCancellationRequested) return;
             var serverAddress = hostAddresses.First(x => x.AddressFamily is AddressFamily.InterNetwork);
             var serverEndpoint = new IPEndPoint(serverAddress, port);
-            _serverSocket = new TcpListener(serverEndpoint);
-            _serverSocket.Start();
+            _server = new GatewayServer(serverEndpoint);
+            _server.Start();
             Logger.LogInfo($"RPC Server started on {serverEndpoint}");
         }
         catch (Exception e)
@@ -83,85 +75,111 @@ public class HermodrPlugin : BaseUnityPlugin
             Logger.LogError($"RPC Server could not start: {e.Message}");
             return;
         }
-
-        for (;;)
+        while (true)
         {
             try
             {
-                var socket = await _serverSocket.AcceptTcpClientAsync();
-                HandleClientAsync(socket);
+                var client = await _server.AcceptGatewayClientAsync();
+                HandleClientAsync(client);
             }
             catch (SocketException e)
             {
-                Logger.LogError($"Error while accepting a client: {e.Message}");
+                Logger.LogWarning($"Error while accepting a client: {e.Message}");
             }
         }
+        try
+        {
+            _cancelSource.Cancel();
+        }
+        catch (AggregateException e) {}
     }
 
     /// <summary>
     /// Communicates with a client when they connect
     /// </summary>
     /// <param name="client"></param>
-    private async void HandleClientAsync(TcpClient client)
+    private async void HandleClientAsync(GatewayClient client)
     {
-        if (client.Client.RemoteEndPoint is IPEndPoint ep)
+        var clientCancelSource = CancellationTokenSource.CreateLinkedTokenSource(_cancelSource.Token);
+        var remoteEp = client.Client.Client.RemoteEndPoint.Serialize().ToString();
+        Logger.LogInfo($"Client connected: {remoteEp}");
+        while (!clientCancelSource.IsCancellationRequested)
         {
-            Logger.LogInfo($"Client {ep.Address}:{ep.Port} connected");
-        }
-        else
-        {
-            Logger.LogInfo("Client connected");
-        }
-        try
-        {
-            var stream = client.GetStream();
-            var requests = _parser.DeserializeStream(stream);
-            await foreach (var request in requests)
+            try {
+                var request = await client.RecvAsync();
+                byte[] buffer;
+                int offset;
+                switch (request.Op)
+                {
+                    case 1:
+                        var players = ZNet.instance.GetPlayerList();
+                        if (players == null) goto error;
+                        var nameSizes = players
+                            .Select(x => Encoding.UTF8.GetByteCount(x.m_name))
+                            .ToList();
+                        buffer = new byte[4 + (4 * players.Count) + nameSizes.Sum()];
+                        offset = 0;
+
+                        DataEncodings.PutBytesBE(players.Count, buffer, offset);
+                        offset += 4;
+
+                        for (var i = 0; i < players.Count; i++)
+                        {
+                            var nameSize = nameSizes[i];
+                            DataEncodings.PutBytesBE(nameSize, buffer, offset);
+                            offset += 4;
+                            
+                            var nameBytes = Encoding.UTF8.GetBytes(players[i].m_name, 0, name.Length, buffer, offset);
+                            offset += nameSize;
+                        }
+                        break;
+                    case 2:
+                        var worldName = ZNet.instance.GetWorldName();
+                        if (worldName == null) goto error;
+                        var worldNameSize = Encoding.UTF8.GetByteCount(worldName);
+                        buffer = new byte[worldNameSize];
+                        offset = 0;
+                        
+                        DataEncodings.PutBytesBE(worldNameSize, buffer, offset);
+                        offset += 4;
+                        
+                        Encoding.UTF8.GetBytes(worldName, 0, worldName.Length, buffer, offset);
+                        break;
+                    case 3:
+                        ZNet.instance.GetNetStats(
+                            out var localQuality,
+                            out var remoteQuality,
+                            out var ping,
+                            out var outByteSec,
+                            out var inByteSec
+                        );
+                        buffer = new byte[20];
+                        DataEncodings.PutBytesBE(localQuality, buffer, 0);
+                        DataEncodings.PutBytesBE(remoteQuality, buffer, 4);
+                        DataEncodings.PutBytesBE(ping, buffer, 8);
+                        DataEncodings.PutBytesBE(outByteSec, buffer, 12);
+                        DataEncodings.PutBytesBE(inByteSec, buffer, 16);
+                        break;
+                    default:
+                        buffer = Array.Empty<byte>();
+                        break;
+                }
+                var response = new BinaryPacket(request.Id, request.Op, buffer);
+                await client.SendAsync(response);
+            error:
+                response = new BinaryPacket(request.Id, -1);
+                await client.SendAsync(response);
+            }
+            catch (SocketException e) when (e.SocketErrorCode == SocketError.Disconnecting)
             {
-                Logger.LogInfo($"Client sent request {request}");
-                try
-                {
-                    var response = HandleRequest(request);
-                    await _parser.Serialize(stream, response);
-                }
-                catch (Exception e)
-                {
-                    var error = new CommandError(request.Op, request.Sequence)
-                    {
-                        Message = e.Message
-                    };
-                    await _parser.SerializeResponse(stream, error);
-                }
+                Logger.LogInfo($"Client requesting graceful shutdown: {remoteEp}");
+            }
+            catch (Exception e)
+            {
+                Logger.LogError($"Client request failed: {e.Message}:{e.Source}");
             }
         }
-        catch (Exception e)
-        {
-            Logger.LogError($"Client error: {e.Message}");
-        }
-
-        client.Close();
-        Logger.LogInfo("Client disconnected!");
-    }
-
-    private CommandResponse HandleRequest(Message request)
-    {
-        if (request is StatusRequest statusRequest)
-        {
-            var players = ZNet.instance.GetPlayerList();
-            return new StatusResponse(request.Sequence)
-            {
-                WorldName = ZNet.instance.GetWorldName(),
-                Players = players.Select(x => x.m_name).ToArray()
-            };
-        }
-        if (request is BroadcastRequest broadcastRequest)
-        {
-            Chat.instance.SendText(Talker.Type.Normal, broadcastRequest.Message);
-            return new BroadcastResponse(request.Sequence);
-        }
-        return new CommandError(request.Op, request.Sequence)
-        {
-            Message = "Unknown opcode."
-        };
+        Logger.LogInfo($"Client disconnecting: {remoteEp}");
+        client.Dispose();
     }
 }
