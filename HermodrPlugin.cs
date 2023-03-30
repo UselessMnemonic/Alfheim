@@ -178,10 +178,6 @@ public class HermodrPlugin : BaseUnityPlugin
                 }
                 var response = new BinaryPacket(request.Id, request.Op, buffer);
                 await client.SendAsync(response);
-                continue;
-            error:
-                response = new BinaryPacket(request.Id, -1);
-                await client.SendAsync(response);
             }
             catch (Exception e)
             {
