@@ -144,7 +144,7 @@ public class HermodrPlugin : BaseUnityPlugin
                         var worldName = ZNet.instance.GetWorldName();
                         if (worldName == null) goto error;
                         var worldNameSize = Encoding.UTF8.GetByteCount(worldName);
-                        buffer = new byte[worldNameSize];
+                        buffer = new byte[4 + worldNameSize];
                         offset = 0;
                         
                         DataEncodings.PutBytesBE(worldNameSize, buffer, offset);
@@ -182,14 +182,10 @@ public class HermodrPlugin : BaseUnityPlugin
                 response = new BinaryPacket(request.Id, -1);
                 await client.SendAsync(response);
             }
-            catch (SocketException e)
-            {
-                Logger.LogInfo($"Client error: {remoteEp}: {e.Message}");
-                break;
-            }
             catch (Exception e)
             {
                 Logger.LogInfo($"Error during request: {remoteEp}: {e.Message}");
+                break;
             }
         }
         Logger.LogInfo($"Client disconnecting: {remoteEp}");
