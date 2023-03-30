@@ -11,6 +11,7 @@ using HarmonyLib;
 using Hermodr.Extensions;
 using Hermodr.Gateway;
 using Hermodr.Gateway.Packets;
+using UnityEngine;
 
 namespace Hermodr;
 
@@ -19,14 +20,14 @@ public class HermodrPlugin : BaseUnityPlugin
 {
     private Harmony _harmony;
     private GatewayServer _server;
-    private CancellationTokenSource _cancelSource;
+    private bool _isActive;
 
     /// <summary>
     /// Called when this plugin should load.
     /// </summary>
     private void Awake()
     {
-        _cancelSource = new CancellationTokenSource();
+        HermodrPlugin.LoadTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
         var configDirectory = Path.Combine(Paths.ConfigPath, PluginInfo.PLUGIN_GUID);
         var configFile = Path.Combine(configDirectory, "default.cfg");
 
@@ -49,7 +50,7 @@ public class HermodrPlugin : BaseUnityPlugin
         }
         catch (SocketException e)
         {
-            Logger.LogError($"Gateway server error while closing: {e.Message}");
+            Logger.LogWarning($"Error while closing gateway server: {e.Message}");
         }
         _harmony?.UnpatchSelf();
         Logger.LogInfo("The Hermodr is closed!");
@@ -60,22 +61,32 @@ public class HermodrPlugin : BaseUnityPlugin
     /// </summary>
     private async void ServerMainAsync(string hostname, int port)
     {
+        IPEndPoint serverEndpoint;
         try
         {
             var hostAddresses = await Dns.GetHostAddressesAsync(hostname);
-            if (_cancelSource.IsCancellationRequested) return;
             var serverAddress = hostAddresses.First(x => x.AddressFamily is AddressFamily.InterNetwork);
-            var serverEndpoint = new IPEndPoint(serverAddress, port);
+            serverEndpoint = new IPEndPoint(serverAddress, port);
+        }
+        catch (Exception e)
+        {
+            Logger.LogError($"Endpoint could not be resolved: {e.Message}");
+            return;
+        }
+        try
+        {
             _server = new GatewayServer(serverEndpoint);
             _server.Start();
             Logger.LogInfo($"RPC Server started on {serverEndpoint}");
         }
         catch (Exception e)
         {
-            Logger.LogError($"RPC Server could not start: {e.Message}");
+            Logger.LogError($"Gateway server could not be started: {e.Message}");
             return;
         }
-        while (true)
+
+        _isActive = true;
+        while (_isActive)
         {
             try
             {
@@ -85,13 +96,10 @@ public class HermodrPlugin : BaseUnityPlugin
             catch (SocketException e)
             {
                 Logger.LogWarning($"Error while accepting a client: {e.Message}");
+                _isActive = (e.SocketErrorCode == SocketError.Interrupted);
             }
         }
-        try
-        {
-            _cancelSource.Cancel();
-        }
-        catch (AggregateException e) {}
+        _server.Stop();
     }
 
     /// <summary>
@@ -100,10 +108,9 @@ public class HermodrPlugin : BaseUnityPlugin
     /// <param name="client"></param>
     private async void HandleClientAsync(GatewayClient client)
     {
-        var clientCancelSource = CancellationTokenSource.CreateLinkedTokenSource(_cancelSource.Token);
         var remoteEp = client.Client.Client.RemoteEndPoint.Serialize().ToString();
         Logger.LogInfo($"Client connected: {remoteEp}");
-        while (!clientCancelSource.IsCancellationRequested)
+        while (_isActive)
         {
             try {
                 var request = await client.RecvAsync();
@@ -129,8 +136,8 @@ public class HermodrPlugin : BaseUnityPlugin
                             DataEncodings.PutBytesBE(nameSize, buffer, offset);
                             offset += 4;
                             
-                            var nameBytes = Encoding.UTF8.GetBytes(players[i].m_name, 0, name.Length, buffer, offset);
-                            offset += nameSize;
+                            var actualSize = Encoding.UTF8.GetBytes(players[i].m_name, 0, name.Length, buffer, offset);
+                            offset += actualSize;
                         }
                         break;
                     case 2:
@@ -160,26 +167,34 @@ public class HermodrPlugin : BaseUnityPlugin
                         DataEncodings.PutBytesBE(outByteSec, buffer, 12);
                         DataEncodings.PutBytesBE(inByteSec, buffer, 16);
                         break;
+                    case 4:
+                        buffer = new byte[8];
+                        DataEncodings.PutBytesBE(HermodrPlugin.LoadTime, buffer, 0);
+                        break;
                     default:
                         buffer = Array.Empty<byte>();
                         break;
                 }
                 var response = new BinaryPacket(request.Id, request.Op, buffer);
                 await client.SendAsync(response);
+                continue;
             error:
                 response = new BinaryPacket(request.Id, -1);
                 await client.SendAsync(response);
             }
-            catch (SocketException e) when (e.SocketErrorCode == SocketError.Disconnecting)
+            catch (SocketException e)
             {
-                Logger.LogInfo($"Client requesting graceful shutdown: {remoteEp}");
+                Logger.LogInfo($"Client error: {remoteEp}: {e.Message}");
+                break;
             }
             catch (Exception e)
             {
-                Logger.LogError($"Client request failed: {e.Message}:{e.Source}");
+                Logger.LogInfo($"Error during request: {remoteEp}: {e.Message}");
             }
         }
         Logger.LogInfo($"Client disconnecting: {remoteEp}");
         client.Dispose();
     }
+
+    public static long LoadTime { get; private set; }
 }
