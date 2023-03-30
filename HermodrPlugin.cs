@@ -4,15 +4,14 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
+using System.Threading.Tasks;
 using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
 using Hermodr.Extensions;
 using Hermodr.Gateway;
 using Hermodr.Gateway.Packets;
-using UnityEngine;
-
+s
 namespace Hermodr;
 
 [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
@@ -61,6 +60,11 @@ public class HermodrPlugin : BaseUnityPlugin
     /// </summary>
     private async void ServerMainAsync(string hostname, int port)
     {
+        // wait for ZNet to be live
+        while (ZNet.instance == null)
+        {
+            await Task.Yield();
+        }
         IPEndPoint serverEndpoint;
         try
         {
@@ -120,7 +124,6 @@ public class HermodrPlugin : BaseUnityPlugin
                 {
                     case 1:
                         var players = ZNet.instance.GetPlayerList();
-                        if (players == null) goto error;
                         var nameSizes = players
                             .Select(x => Encoding.UTF8.GetByteCount(x.m_name))
                             .ToList();
@@ -142,7 +145,6 @@ public class HermodrPlugin : BaseUnityPlugin
                         break;
                     case 2:
                         var worldName = ZNet.instance.GetWorldName();
-                        if (worldName == null) goto error;
                         var worldNameSize = Encoding.UTF8.GetByteCount(worldName);
                         buffer = new byte[4 + worldNameSize];
                         offset = 0;
