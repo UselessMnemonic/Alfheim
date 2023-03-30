@@ -11,7 +11,6 @@ using HarmonyLib;
 using Hermodr.Extensions;
 using Hermodr.Gateway;
 using Hermodr.Gateway.Packets;
-s
 namespace Hermodr;
 
 [BepInPlugin(PluginInfo.PLUGIN_GUID, PluginInfo.PLUGIN_NAME, PluginInfo.PLUGIN_VERSION)]
