@@ -123,22 +123,20 @@ public class HermodrPlugin : BaseUnityPlugin
                 {
                     case 1:
                         var players = ZNet.instance.GetPlayerList();
-                        var nameSizes = players
+                        var totalTextSize = players
                             .Select(x => Encoding.UTF8.GetByteCount(x.m_name))
-                            .ToList();
-                        buffer = new byte[4 + (4 * players.Count) + nameSizes.Sum()];
+                            .Sum();
+                        buffer = new byte[4 + (4 * players.Count) + totalTextSize];
                         offset = 0;
 
                         DataEncodings.PutBytesBE(players.Count, buffer, offset);
                         offset += 4;
 
-                        for (var i = 0; i < players.Count; i++)
+                        foreach (var p in players)
                         {
-                            var nameSize = nameSizes[i];
-                            DataEncodings.PutBytesBE(nameSize, buffer, offset);
+                            var actualSize = Encoding.UTF8.GetBytes(p.m_name, 0, p.m_name.Length, buffer, offset + 4);
+                            DataEncodings.PutBytesBE(actualSize, buffer, offset);
                             offset += 4;
-                            
-                            var actualSize = Encoding.UTF8.GetBytes(players[i].m_name, 0, name.Length, buffer, offset);
                             offset += actualSize;
                         }
                         break;
