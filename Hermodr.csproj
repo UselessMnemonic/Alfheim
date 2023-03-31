@@ -32,7 +32,7 @@
       <HintPath>$(BEPINEX_CORE)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="BepInEx, Version=5.4.19.0, Culture=neutral, PublicKeyToken=null">
+    <Reference Include="BepInEx, Version=5.4.21.0, Culture=neutral, PublicKeyToken=null">
       <HintPath>$(BEPINEX_CORE)\BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
